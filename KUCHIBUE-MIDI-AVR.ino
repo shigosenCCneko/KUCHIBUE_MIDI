@@ -1,22 +1,25 @@
 
+
 #include "fix_fft2.h"
 #include <avr/pgmspace.h>
 
 
 //#define THRESHOLD_LEVEL   10
 
-#define THRESHOLD_LEVEL   12
+#define THRESHOLD_LEVEL   30
 //#define DEBUG
 #define ADC_STEP   64
 
 extern char sqrt_dat[128][128];
 char im0[256], im1[256];
-char data0[256], data1[256];
+char data0[256], data1[256],data_ring[256];
 char buf[20];
 int notes_cnt = 0;
 char midi_command = 0x90;
 char midi_note = 0;
 char midi_velo = 0;
+volatile uint8_t write_p = 0;
+
 volatile int data_cnt = 0;
 volatile int im_cnt = 0;
 volatile char buf_no = 0;
@@ -59,10 +62,10 @@ const char note_no[97] PROGMEM = {
 };
 void setup() {
 
-// Serial.begin(256000);
+ Serial.begin(256000);
 // Serial.begin(115200);
 
-  Serial.begin(2000000);
+//  Serial.begin(2000000);
   TIMSK0 = 0;
   ADCSRA = 0xF7;  
   ADMUX = 0x60;
@@ -266,14 +269,20 @@ ISR(TIMER2_COMPA_vect) {
 
 ISR(ADC_vect) {
   char a;
-
+  uint8_t read_p;
   a = ADCL;
   a = ADCH;
-
+   
+  data_ring[++write_p] = a;
+ // data_ring[write_p+256] = a;
+  read_p = write_p + 64;
+  
   if (buf_no == 0) {
-    data1[data_cnt] = data1[data_cnt + ADC_STEP * 2];
-    data1[data_cnt + ADC_STEP] = data1[data_cnt + ADC_STEP * 3];
-    data1[data_cnt + ADC_STEP * 2] = data0[data_cnt + ADC_STEP * 3];
+    data1[data_cnt] = data_ring[read_p];
+    read_p += ADC_STEP;    
+    data1[data_cnt + ADC_STEP] = data_ring[read_p];
+    read_p += ADC_STEP;    
+    data1[data_cnt + ADC_STEP * 2] = data_ring[read_p];
     data1[data_cnt + ADC_STEP * 3] = a;
 
     im1[im_cnt] = 0;
@@ -291,9 +300,11 @@ ISR(ADC_vect) {
 
   } else {
 
-    data0[data_cnt] = data0[data_cnt + ADC_STEP * 2];
-    data0[data_cnt + ADC_STEP] = data0[data_cnt + ADC_STEP * 3];
-    data0[data_cnt + ADC_STEP * 2] = data1[data_cnt + ADC_STEP * 3];
+    data0[data_cnt] = data_ring[read_p];
+    read_p += ADC_STEP;
+    data0[data_cnt + ADC_STEP] = data_ring[read_p ];
+    read_p += ADC_STEP;   
+    data0[data_cnt + ADC_STEP * 2] = data_ring[read_p];
     data0[data_cnt + ADC_STEP * 3] = a;
 
     im0[im_cnt] = 0;
