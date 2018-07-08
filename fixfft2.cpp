@@ -1,6 +1,6 @@
 
 #include "fix_fft2.h"
-
+//#include <WProgram.h>
 
 /* fix_fft.c - Fixed-point in-place Fast Fourier Transform  */
 /*
@@ -31,11 +31,6 @@
   Made portable:  Malcolm Slaney 12/15/94 malcolm@interval.com
   Enhanced:  Dimitrios P. Bouras  14 Jun 2006 dbouras@ieee.org
   Modified for 8bit values David Keller  10.10.2010
-
- Improvement of the transaction speed by the function-limited:
- Keiji Katahira 6/20/2018
- fix 256 scale and not reverse only
- change FIX_MPY()  inline function
 */
 
 
@@ -103,12 +98,19 @@ char Sinewave[N_WAVE - N_WAVE / 4]  = {
 */
 inline char FIX_MPY(char a, char b)
 {
-   
+  
   int c = (int)a * (int)b + 64;
   a = (c >> 7);
- 
-  return a;
+   return a;
 }
+
+/*
+  FIX_MPY1() and FIX_MPY2()
+
+  FIX_MPY1():    FIX_MPY() - FIX_MPY()
+  FIX_MPY2():    FIX_MPY() + FIX_MPY()
+  slightly fast  FIX_MPY call.
+   */
 inline char FIX_MPY1(char a, char b, char c, char d)
 {
 
@@ -126,12 +128,23 @@ inline char FIX_MPY2(char a, char b, char c, char d)
 
   
 }
+
+
+
+
+
 /*
   fix_fft() - perform forward/inverse fast Fourier transform.
   fr[n],fi[n] are real and imaginary arrays, both INPUT AND
   RESULT (in-place FFT), with 0 <= n < 2**m; set inverse to
   0 for forward transform (FFT), or 1 for iFFT.
+
+
+  Changed
+changed only 128scale no inverse  for transaction speed improvement
 */
+
+
 int fix_fft2(char fr[], char fi[])
 {
 
@@ -143,53 +156,47 @@ int fix_fft2(char fr[], char fi[])
   mr = 0;
 
   /* decimation in time - re-order data */
-  for (m = 1; m <=255; ++m) {
-    l = 256;
+  for (m = 1; m <=127; ++m) {
+    l = 128;
     do {
       l >>= 1;
-    } while (mr + l >255);
+    } while (mr + l >127);
     mr = (mr & (l - 1)) + l;
 
     if (mr <= m)
       continue;
     tr = fr[m];
-    fr[m] = fr[mr];
+    ti = fr[mr];
+     
+    fr[m] = ti;
     fr[mr] = tr;
+    
     ti = fi[m];
-    fi[m] = fi[mr];
+    tr = fi[mr];
+    
+    fi[m] = tr;
     fi[mr] = ti;
   }
 
   l = 1;
   k = LOG2_N_WAVE - 1;
-  while (l < 256) {
+  while (l < 128) {
 
-      /*
-        fixed scaling, for proper normalization --
-        there will be log2(n) passes, so this results
-        in an overall factor of 1/n, distributed to
-        maximize arithmetic accuracy.
-      */
-
-  
-    /*
-      it may not be obvious, but the shift will be
-      performed on each data point exactly once,
-      during this pass.
-    */
+   
     istep = l << 1;
     for (m = 0; m < l; ++m) {
       j = m << k;
       /* 0 <= j < N_WAVE/2 */
-      wr =  Sinewave [ j + N_WAVE / 4];
+  
 
       wi = -Sinewave[j];
-  
+
+      wr =  Sinewave [ j + N_WAVE / 4];
 
       wr >>= 1;
       wi >>= 1;
 
-      for (i = m; i < 256; i += istep) {
+      for (i = m; i < 128; i += istep) {
         j = i + l;
         
 //        tr = FIX_MPY(wr, fr[j]) - FIX_MPY(wi, fi[j]);
@@ -197,17 +204,15 @@ int fix_fft2(char fr[], char fi[])
 
         tr = FIX_MPY1(wr, fr[j],wi, fi[j]);
         ti = FIX_MPY2(wr, fi[j],wi, fr[j]);
-
         
-        qr = fr[i];
-        qi = fi[i];
-
-        qr >>= 1;
-        qi >>= 1;
+        qr = fr[i]>>1;
+        qi = fi[i]>>1;
+        //qr >>= 1;
+        //qi >>= 1;
      
         fr[j] = qr - tr;
+        fr[i] = qr + tr;        
         fi[j] = qi - ti;
-        fr[i] = qr + tr;
         fi[i] = qi + ti;
       }
     }
@@ -216,5 +221,11 @@ int fix_fft2(char fr[], char fi[])
   }
   return 0;
 }
+
+
+
+
+
+
 
 
